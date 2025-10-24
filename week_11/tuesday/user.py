@@ -15,15 +15,14 @@ class Simple(BaseModel):
     name: str = Field(..., example="Samuel Larry")
     email: str = Field(..., example="sam@email.com")
     password: str = Field(..., example="sam123")
-    userType: str = Field(..., examples="student")
+    userType: str = Field(..., example="student")
 
 @app.post("/signup")
 def signUp(input: Simple):
     try:
         # Check for duplicate email - USING 'user' TABLE
         duplicate_query = text("""
-            SELECT * FROM users  # Using 'user' table
-            WHERE email = :email
+            SELECT * FROM users WHERE email = :email
         """)
         
         existing = db.execute(duplicate_query, {"email": input.email}).fetchone()
@@ -32,8 +31,8 @@ def signUp(input: Simple):
         
         # Insert new user - ALSO USING 'user' TABLE
         query = text("""
-            INSERT INTO users (name, email, password, userType)  # Changed to 'user'
-            VALUES (:name, :email, :password :userType)
+            INSERT INTO users (name, email, password, userType)
+            VALUES (:name, :email, :password, :userType)
         """)
 
         # Hash password
@@ -69,7 +68,7 @@ def root():
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., example="sam@gmail.com")
+    email: str = Field(..., example="sammy@gmail.com")
     password: str = Field(..., example="sam123")
 
 @app.post("/login")
@@ -78,10 +77,15 @@ def login(input: LoginRequest):
         query = text("""
         SELECT * FROM users WHERE email = :email
 """)
-        result = db.execute(query, {"email": input.email}).fetch()
+        result = db.execute(query, {"email": input.email}).fetchone()
 
         if not result:
             raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        verified_password = bcrypt.checkpw(
+            input.password.encode('utf-8'),
+            result["password"].encode('utf-8')
+        )
         
         verified_password = bcrypt.checkpw(input.password.encode('utf-8'), result.password.encode('utf-8'))
 
