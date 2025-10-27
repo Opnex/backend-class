@@ -11,12 +11,13 @@ load_dotenv()
 
 app = FastAPI(title="Simple App", version="1.0.0")
 
+# os.getenv int ("token_time")
+
 class Simple(BaseModel):
     name: str = Field(..., example="Samuel Larry")
     email: str = Field(..., example="sam@email.com")
     password: str = Field(..., example="sam123")
     userType: str = Field(..., example="student")
-
 
 @app.post("/signup")
 def signUp(input: Simple):
@@ -67,7 +68,6 @@ def signUp(input: Simple):
 def root():
     return {"message": "Welcome to the API"}
 
-
 class LoginRequest(BaseModel):
     email: str = Field(..., example="sammy@gmail.com")
     password: str = Field(..., example="sam123")
@@ -93,12 +93,16 @@ def login(input: LoginRequest):
         if not verified_password:
             raise HTTPException(status_code=404, detail = "Invalid email or password")
         
+        # encoded_token = create_token(details={
+        #     "email": result.email,
+        #     "userType": result.userType
+        # }, expiry= token_time )
+
         return {
             "message": "Login Successful"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail= str(e))
-
 
 if __name__ == "__main__":
     uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")))
