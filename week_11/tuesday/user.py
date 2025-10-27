@@ -17,6 +17,7 @@ class Simple(BaseModel):
     password: str = Field(..., example="sam123")
     userType: str = Field(..., example="student")
 
+
 @app.post("/signup")
 def signUp(input: Simple):
     try:
@@ -97,6 +98,7 @@ def login(input: LoginRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail= str(e))
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")))
