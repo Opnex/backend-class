@@ -6,18 +6,23 @@ import os
 from dotenv import load_dotenv
 import bcrypt
 import uvicorn
+import jwt
+from middleware import create_token, verify_token
+from fastapi import Depends
 
 load_dotenv()
 
 app = FastAPI(title="Simple App", version="1.0.0")
 
-# os.getenv int ("token_time")
+token_time = int(os.getenv("token_time"))
 
 class Simple(BaseModel):
     name: str = Field(..., example="Samuel Larry")
     email: str = Field(..., example="sam@email.com")
     password: str = Field(..., example="sam123")
     userType: str = Field(..., example="student")
+    gender: str = Field(..., example="male")
+
 
 @app.post("/signup")
 def signUp(input: Simple):
@@ -33,8 +38,8 @@ def signUp(input: Simple):
         
         # Insert new user - ALSO USING 'user' TABLE
         query = text("""
-            INSERT INTO users (name, email, password, userType)
-            VALUES (:name, :email, :password, :userType)
+            INSERT INTO users (name, email, password, userType, gender)
+            VALUES (:name, :email, :password, :userType, :gender)
         """)
 
         # Hash password
@@ -47,14 +52,14 @@ def signUp(input: Simple):
             "name": input.name, 
             "email": input.email, 
             "password": hashed_password_str,
-            "userType": input.userType
+            "userType": input.userType,
+            "gender": input.gender
         })
         db.commit()
         
         return {
             "message": "User created successfully",
             "data": {"name": input.name, "email": input.email}
-            # , "password": hashedPassword, "userType": input.userType
         }
     
     except HTTPException:
@@ -83,26 +88,88 @@ def login(input: LoginRequest):
         if not result:
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
-        verified_password = bcrypt.checkpw(
-            input.password.encode('utf-8'),
-            result["password"].encode('utf-8')
-        )
-        
-        verified_password = bcrypt.checkpw(input.password.encode('utf-8'), result.password.encode('utf-8'))
+        # Handle result as tuple or object
+        hashed_password = None
+        try:
+            # If result is a tuple, get password by index (assuming 3rd column is password)
+            if isinstance(result, tuple):
+                # Adjust index if password is not at 2
+                hashed_password = result[2]
+            elif hasattr(result, 'password'):
+                hashed_password = result.password
+            else:
+                raise Exception("Password field not found in result")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
+        verified_password = bcrypt.checkpw(input.password.encode('utf-8'), hashed_password.encode('utf-8'))
         if not verified_password:
-            raise HTTPException(status_code=404, detail = "Invalid email or password")
+            raise HTTPException(status_code=401, detail = "Invalid email or password")
         
-        # encoded_token = create_token(details={
-        #     "email": result.email,
-        #     "userType": result.userType
-        # }, expiry= token_time )
+        # Extract email and userType from the result in a robust way
+        try:
+            if hasattr(result, '_mapping'):
+                user_email = result._mapping.get('email')
+                user_type = result._mapping.get('userType')
+            elif isinstance(result, dict):
+                user_email = result.get('email')
+                user_type = result.get('userType')
+            elif hasattr(result, 'email'):
+                user_email = result.email
+                user_type = result.userType
+            else:
+                raise Exception('Unable to extract user fields from result')
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        encoded_token = create_token(details={
+            "email": user_email,
+            "userType": user_type
+        }, expiry= token_time )
 
         return {
-            "message": "Login Successful"
+            "message": "Login Successful",
+            "token": encoded_token,
+            "expires_in_minutes": token_time
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+class courseRequest(BaseModel):
+    title: str = Field(..., example="Backend Course")
+    level: str = Field(..., example="Beginer")
+
+
+@app.post("/courses")
+def addcourses(input: courseRequest, user_data = Depends(verify_token)):
+    try:
+        print(user_data)
+        
+        if user_data["userType"] != 'admin':
+            raise HTTPException(status_code=401, detail="You are not authorized to add this course")
+
+        query = text(""" 
+            INSERT INTO courses (title, level)
+            VALUES (:title, :level)
+        """)
+        db.execute(query, {
+            "title": input.title,
+            "level": input.level
+        })
+        db.commit()
+
+        return {
+            "message": "Course added successfully",
+            "details": {
+                "title": input.title,
+                "level": input.level
+            }
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail= str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")))
